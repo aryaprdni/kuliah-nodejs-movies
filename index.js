@@ -3,6 +3,8 @@ const bodyParser = require("body-parser");
 const koneksi = require("./config/database");
 const multer = require('multer');
 const path = require('path');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const app = express();
 const PORT = 3000;
 
@@ -127,6 +129,57 @@ app.get("/api/movies/filter/:judul", (req, res) => {
     res.status(200).json({ success: true, data: rows });
   });
 });
+
+app.post("/api/movies/register", (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Username and password are required' });
+  }
+
+  bcrypt.hash(password, 10, (err, hashedPassword) => {
+    if (err) {
+      return res.status(500).json({ message: 'Error hashing password' });
+    }
+
+    const querySql = 'INSERT INTO users (username, password) VALUES (?, ?)';
+
+    koneksi.query(querySql, [username, hashedPassword], (err, rows, field) => {
+      if (err) {
+        return res.status(500).json({ message: 'Error registering user', error: err });
+      }
+      res.status(201).json({ success: true, message: 'User registered successfully', data: rows });
+    });
+  })
+})
+
+app.post('/api/movies/login', (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Username and password are required' });
+  }
+
+  const querySql = 'SELECT * FROM users WHERE username = ?';
+  koneksi.query(querySql, [username], (err, rows, field) => {
+    if (err) {
+      return res.status(500).json({ message: 'Ada kesalahan', error: err });
+    }
+    if (rows.length === 0) {
+      return res.status(401).json({ message: 'Invalid username or password' });
+    }
+    bcrypt.compare(password, rows[0].password, (err, result) => {
+      if (err) {
+        return res.status(500).json({ message: 'Ada kesalahan', error: err });
+      }
+      if (!result) {
+        return res.status(401).json({ message: 'Invalid username or password' });
+      }
+      const token = jwt.sign({ username }, 'secret_key', { expiresIn: '1h' });
+      res.status(200).json({ success: true, message: 'Login success', token });
+    })
+  })
+})
 
 // buat server nya menggunakan port sesuai settingan konstanta = 5000
 app.listen(PORT, () => console.log(`Server running at port: ${PORT}`));
